@@ -39,10 +39,24 @@ func (f *fakeEngine) ExecuteSecurity(context.Context, sdlc.SDLCRequest) error {
 	return nil
 }
 
+type recordingCommunicator struct {
+	tasks     []sdlc.A2ATask
+	errByType map[string]error
+}
+
+func (r *recordingCommunicator) SendTask(_ context.Context, task sdlc.A2ATask) error {
+	if err, ok := r.errByType[task.TaskType]; ok {
+		return err
+	}
+	r.tasks = append(r.tasks, task)
+	return nil
+}
+
 func TestCoordinatorRun_HappyPath(t *testing.T) {
 	store := memory.NewStore()
 	engine := &fakeEngine{}
-	coordinator := sdlc.NewCoordinator(store, engine, 1)
+	comm := &recordingCommunicator{}
+	coordinator := sdlc.NewCoordinator(store, engine, 1).WithA2ACommunicator(comm)
 
 	err := coordinator.Run(context.Background(), sdlc.SDLCRequest{WorkflowID: "wf-1", ProjectID: "proj-1"})
 	require.NoError(t, err)
@@ -52,12 +66,16 @@ func TestCoordinatorRun_HappyPath(t *testing.T) {
 	require.Equal(t, "completed", run.Status)
 	require.Equal(t, sdlc.StageSecurity, run.Stage)
 	require.Equal(t, 0, run.Attempt)
+	require.Len(t, comm.tasks, 2)
+	require.Equal(t, "prd_ready", comm.tasks[0].TaskType)
+	require.Equal(t, "changeset_ready", comm.tasks[1].TaskType)
 }
 
 func TestCoordinatorRun_SecurityFailThenPass(t *testing.T) {
 	store := memory.NewStore()
 	engine := &fakeEngine{securityErrByCall: map[int]error{1: errors.New("gosec fail")}}
-	coordinator := sdlc.NewCoordinator(store, engine, 2)
+	comm := &recordingCommunicator{}
+	coordinator := sdlc.NewCoordinator(store, engine, 2).WithA2ACommunicator(comm)
 
 	err := coordinator.Run(context.Background(), sdlc.SDLCRequest{WorkflowID: "wf-2", ProjectID: "proj-2"})
 	require.NoError(t, err)
@@ -67,6 +85,12 @@ func TestCoordinatorRun_SecurityFailThenPass(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "completed", run.Status)
 	require.Equal(t, 1, run.Attempt)
+
+	taskTypes := make([]string, 0, len(comm.tasks))
+	for _, task := range comm.tasks {
+		taskTypes = append(taskTypes, task.TaskType)
+	}
+	require.Equal(t, []string{"prd_ready", "changeset_ready", "remediation_required", "remediation_ready"}, taskTypes)
 }
 
 func TestCoordinatorRun_SecurityFailsAfterMaxRetries(t *testing.T) {
@@ -93,4 +117,21 @@ func TestCoordinatorRun_DeveloperRemediationFails(t *testing.T) {
 
 	err := coordinator.Run(context.Background(), sdlc.SDLCRequest{WorkflowID: "wf-4", ProjectID: "proj-4"})
 	require.ErrorContains(t, err, "developer remediation")
+}
+
+func TestCoordinatorRun_A2AFailureStopsWorkflow(t *testing.T) {
+	store := memory.NewStore()
+	engine := &fakeEngine{}
+	comm := &recordingCommunicator{errByType: map[string]error{"changeset_ready": errors.New("a2a transport unavailable")}}
+	coordinator := sdlc.NewCoordinator(store, engine, 1).WithA2ACommunicator(comm)
+
+	err := coordinator.Run(context.Background(), sdlc.SDLCRequest{WorkflowID: "wf-5", ProjectID: "proj-5"})
+	require.ErrorContains(t, err, "a2a developer->security")
+	require.ErrorContains(t, err, "transport unavailable")
+
+	run, findErr := store.FindRun(context.Background(), "wf-5")
+	require.NoError(t, findErr)
+	require.Equal(t, "failed", run.Status)
+	require.Equal(t, "a2a transport unavailable", run.LastError)
+	require.Equal(t, sdlc.StageDeveloper, run.Stage)
 }

@@ -196,6 +196,7 @@ type SecurityReport struct {
 - Added A2A task request contract with validation and HTTP handler.
 - Added MCP tool request contract with validation and HTTP handler.
 - Added contract handler tests for happy and unhappy payload scenarios.
+- Implemented coordinator-level A2A task handoffs between Product, Developer, and Security agents for normal and remediation paths.
 
 ### Upcoming immediate follow-ups
 - Add Mongo indexes and unique constraints (`workflowId`, `artifactId`) plus idempotency keys for external side-effects.
