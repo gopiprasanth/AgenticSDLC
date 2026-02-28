@@ -12,14 +12,20 @@ import (
 
 type fakeEngine struct {
 	productErr         error
+	productErrByCall   map[int]error
 	developerErr       error
 	developerErrByCall map[int]error
 	securityErrByCall  map[int]error
+	productCalls       int
 	securityCalls      int
 	developerCalls     int
 }
 
 func (f *fakeEngine) ExecuteProduct(context.Context, sdlc.SDLCRequest) error {
+	f.productCalls++
+	if err, ok := f.productErrByCall[f.productCalls]; ok {
+		return err
+	}
 	return f.productErr
 }
 
@@ -71,6 +77,24 @@ func TestCoordinatorRun_HappyPath(t *testing.T) {
 	require.Equal(t, "changeset_ready", comm.tasks[1].TaskType)
 }
 
+func TestCoordinatorRun_DeveloperToProductClarificationLoop(t *testing.T) {
+	store := memory.NewStore()
+	engine := &fakeEngine{developerErrByCall: map[int]error{1: errors.New("requirements ambiguous")}}
+	comm := &recordingCommunicator{}
+	coordinator := sdlc.NewCoordinator(store, engine, 1).WithA2ACommunicator(comm)
+
+	err := coordinator.Run(context.Background(), sdlc.SDLCRequest{WorkflowID: "wf-clarify", ProjectID: "proj-clarify"})
+	require.NoError(t, err)
+	require.Equal(t, 2, engine.productCalls, "product should run again to clarify requirements")
+	require.Equal(t, 2, engine.developerCalls, "developer should retry after product clarification")
+
+	taskTypes := make([]string, 0, len(comm.tasks))
+	for _, task := range comm.tasks {
+		taskTypes = append(taskTypes, task.TaskType)
+	}
+	require.Equal(t, []string{"prd_ready", "requirements_clarification_required", "prd_ready", "changeset_ready"}, taskTypes)
+}
+
 func TestCoordinatorRun_SecurityFailThenPass(t *testing.T) {
 	store := memory.NewStore()
 	engine := &fakeEngine{securityErrByCall: map[int]error{1: errors.New("gosec fail")}}
@@ -111,7 +135,7 @@ func TestCoordinatorRun_DeveloperRemediationFails(t *testing.T) {
 	store := memory.NewStore()
 	engine := &fakeEngine{
 		securityErrByCall:  map[int]error{1: errors.New("security fail")},
-		developerErrByCall: map[int]error{2: errors.New("developer fix failed")},
+		developerErrByCall: map[int]error{2: errors.New("developer fix failed"), 3: errors.New("developer fix failed")},
 	}
 	coordinator := sdlc.NewCoordinator(store, engine, 2)
 

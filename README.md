@@ -26,6 +26,7 @@ A2A task handoff is integrated between agents in the coordinator flow:
 
 - Product -> Developer (`prd_ready`)
 - Developer -> Security (`changeset_ready`)
+- Developer -> Product on ambiguity (`requirements_clarification_required`)
 - Security -> Developer on failure (`remediation_required`)
 - Developer -> Security after fix (`remediation_ready`)
 

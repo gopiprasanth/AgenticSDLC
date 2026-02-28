@@ -91,28 +91,22 @@ func (c *Coordinator) Run(ctx context.Context, req SDLCRequest) error {
 		return fmt.Errorf("create run: %w", err)
 	}
 
-	if err := c.engine.ExecuteProduct(ctx, req); err != nil {
+	if err := c.executeProductAndNotifyDeveloper(ctx, req); err != nil {
 		run.Status = "failed"
 		run.LastError = err.Error()
 		_ = c.store.UpdateRun(ctx, run)
-		return fmt.Errorf("product stage: %w", err)
-	}
-	if err := c.communicator.SendTask(ctx, A2ATask{WorkflowID: req.WorkflowID, FromAgent: "product", ToAgent: "developer", TaskType: "prd_ready", Payload: "product artifact ready"}); err != nil {
-		run.Status = "failed"
-		run.LastError = err.Error()
-		_ = c.store.UpdateRun(ctx, run)
-		return fmt.Errorf("a2a product->developer: %w", err)
+		return err
 	}
 
 	run.Stage = StageDeveloper
 	if err := c.store.UpdateRun(ctx, run); err != nil {
 		return fmt.Errorf("persist developer stage: %w", err)
 	}
-	if err := c.engine.ExecuteDeveloper(ctx, req); err != nil {
+	if err := c.executeDeveloperWithClarification(ctx, req); err != nil {
 		run.Status = "failed"
 		run.LastError = err.Error()
 		_ = c.store.UpdateRun(ctx, run)
-		return fmt.Errorf("developer stage: %w", err)
+		return err
 	}
 	if err := c.communicator.SendTask(ctx, A2ATask{WorkflowID: req.WorkflowID, FromAgent: "developer", ToAgent: "security", TaskType: "changeset_ready", Payload: "developer changes ready for scanning"}); err != nil {
 		run.Status = "failed"
@@ -122,6 +116,33 @@ func (c *Coordinator) Run(ctx context.Context, req SDLCRequest) error {
 	}
 
 	return c.runSecurityLoop(ctx, req, run)
+}
+
+func (c *Coordinator) executeProductAndNotifyDeveloper(ctx context.Context, req SDLCRequest) error {
+	if err := c.engine.ExecuteProduct(ctx, req); err != nil {
+		return fmt.Errorf("product stage: %w", err)
+	}
+	if err := c.communicator.SendTask(ctx, A2ATask{WorkflowID: req.WorkflowID, FromAgent: "product", ToAgent: "developer", TaskType: "prd_ready", Payload: "product artifact ready"}); err != nil {
+		return fmt.Errorf("a2a product->developer: %w", err)
+	}
+	return nil
+}
+
+func (c *Coordinator) executeDeveloperWithClarification(ctx context.Context, req SDLCRequest) error {
+	if err := c.engine.ExecuteDeveloper(ctx, req); err == nil {
+		return nil
+	}
+
+	if err := c.communicator.SendTask(ctx, A2ATask{WorkflowID: req.WorkflowID, FromAgent: "developer", ToAgent: "product", TaskType: "requirements_clarification_required", Payload: "developer needs requirement clarity"}); err != nil {
+		return fmt.Errorf("a2a developer->product clarification: %w", err)
+	}
+	if err := c.executeProductAndNotifyDeveloper(ctx, req); err != nil {
+		return fmt.Errorf("requirements clarification loop: %w", err)
+	}
+	if err := c.engine.ExecuteDeveloper(ctx, req); err != nil {
+		return fmt.Errorf("developer stage: %w", err)
+	}
+	return nil
 }
 
 func (c *Coordinator) runSecurityLoop(ctx context.Context, req SDLCRequest, run WorkflowRun) error {
@@ -155,7 +176,7 @@ func (c *Coordinator) runSecurityLoop(ctx context.Context, req SDLCRequest, run 
 			return fmt.Errorf("a2a security->developer: %w", err)
 		}
 
-		if err := c.engine.ExecuteDeveloper(ctx, req); err != nil {
+		if err := c.executeDeveloperWithClarification(ctx, req); err != nil {
 			run.Status = "failed"
 			run.LastError = err.Error()
 			_ = c.store.UpdateRun(ctx, run)
