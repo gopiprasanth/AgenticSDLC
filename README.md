@@ -43,6 +43,46 @@ Optional but useful:
 - Temporal CLI/UI for debugging workflows
 - MongoDB Compass for inspecting local test/dev data
 
+## How to Install (Recommended Method)
+
+The recommended approach is to use the provided helper assets so your environment matches project expectations.
+
+### Option A (Recommended): Use Docker prerequisites image
+
+1. Build the prerequisites image:
+
+```bash
+docker compose -f docker/compose.prerequisites.yml build
+```
+
+2. Start an interactive shell with all required tooling pre-installed:
+
+```bash
+docker compose -f docker/compose.prerequisites.yml run --rm prerequisites
+```
+
+3. Inside the container, verify tools and run tests:
+
+```bash
+go version
+docker --version
+go test ./internal/... ./tests/...
+```
+
+### Option B: Native Linux installer (Debian/Ubuntu)
+
+For local host setup without containerized tooling:
+
+```bash
+./scripts/install-prerequisites.sh
+```
+
+This helper installs/validates:
+
+- Docker Engine + Compose plugin
+- Go toolchain
+- Git and core build utilities
+
 ## How to Run Locally
 
 ### 1) Clone and enter repository
@@ -82,9 +122,16 @@ go test ./tests/e2e -timeout 45s
 go test ./internal/... ./tests/...
 ```
 
+## Helper Assets
+
+- `scripts/install-prerequisites.sh` — native Debian/Ubuntu prerequisite installer
+- `docker/Dockerfile.prerequisites` — reproducible dev tooling image
+- `docker/compose.prerequisites.yml` — one-command shell with prerequisites
+
 ## Repository Structure
 
 - `internal/sdlc/` – core coordination logic and runner abstractions
+- `internal/api/contracts/` – A2A and MCP request contract handlers
 - `tests/integration/` – containerized integration tests
 - `tests/e2e/` – end-to-end flow validation
 - `docs/plan/` – staged implementation and milestone plan
