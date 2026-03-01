@@ -40,13 +40,19 @@ func TestServiceStart_HappyPath(t *testing.T) {
 func TestServiceStart_TemporalFailure(t *testing.T) {
 	svc := NewService(temporalMock{err: errors.New("temporal down")}, mongoAuditMock{})
 
-	_, err := svc.Start(context.Background(), sdlc.SDLCRequest{WorkflowID: "wf-101", ProjectID: "proj-101"})
+	workflowID, err := svc.Start(context.Background(), sdlc.SDLCRequest{WorkflowID: "wf-101", ProjectID: "proj-101"})
+	require.Empty(t, workflowID)
 	require.ErrorContains(t, err, "start temporal workflow")
 }
 
-func TestServiceStart_MongoFailure(t *testing.T) {
+func TestServiceStart_MongoFailureReturnsWorkflowID(t *testing.T) {
 	svc := NewService(temporalMock{workflowID: "wf-102"}, mongoAuditMock{err: errors.New("mongo down")})
 
-	_, err := svc.Start(context.Background(), sdlc.SDLCRequest{WorkflowID: "wf-102", ProjectID: "proj-102"})
+	workflowID, err := svc.Start(context.Background(), sdlc.SDLCRequest{WorkflowID: "wf-102", ProjectID: "proj-102"})
+	require.Equal(t, "wf-102", workflowID)
 	require.ErrorContains(t, err, "write start audit event")
+
+	var startErr *StartError
+	require.ErrorAs(t, err, &startErr)
+	require.Equal(t, "wf-102", startErr.WorkflowID)
 }

@@ -15,6 +15,20 @@ type MongoAuditWriter interface {
 	WriteStartEvent(ctx context.Context, workflowID string, req sdlc.SDLCRequest) error
 }
 
+type StartError struct {
+	WorkflowID string
+	Err        error
+}
+
+func (e *StartError) Error() string {
+	if e.WorkflowID == "" {
+		return e.Err.Error()
+	}
+	return fmt.Sprintf("workflow %s started but post-start failed: %v", e.WorkflowID, e.Err)
+}
+
+func (e *StartError) Unwrap() error { return e.Err }
+
 type Service struct {
 	temporal TemporalStarter
 	audit    MongoAuditWriter
@@ -30,7 +44,7 @@ func (s *Service) Start(ctx context.Context, req sdlc.SDLCRequest) (string, erro
 		return "", fmt.Errorf("start temporal workflow: %w", err)
 	}
 	if err := s.audit.WriteStartEvent(ctx, workflowID, req); err != nil {
-		return "", fmt.Errorf("write start audit event: %w", err)
+		return workflowID, &StartError{WorkflowID: workflowID, Err: fmt.Errorf("write start audit event: %w", err)}
 	}
 	return workflowID, nil
 }

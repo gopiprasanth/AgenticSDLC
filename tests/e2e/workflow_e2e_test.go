@@ -2,36 +2,40 @@ package e2e_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"agenticsdlc/internal/sdlc"
-	"agenticsdlc/internal/sdlc/memory"
+	mongostore "agenticsdlc/internal/sdlc/mongo"
+	temporalsdlc "agenticsdlc/internal/sdlc/temporal"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	mongocontainer "github.com/testcontainers/testcontainers-go/modules/mongodb"
 	"github.com/testcontainers/testcontainers-go/wait"
-	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
-	"go.temporal.io/sdk/client"
+	temporalclient "go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/worker"
 )
 
-type remediationEngine struct {
-	securityCalls int
+const testTaskQueue = "agentic-e2e-task-queue"
+
+type mongoBackedActivities struct {
+	store *mongostore.Store
 }
 
-func (r *remediationEngine) ExecuteProduct(context.Context, sdlc.SDLCRequest) error   { return nil }
-func (r *remediationEngine) ExecuteDeveloper(context.Context, sdlc.SDLCRequest) error { return nil }
-func (r *remediationEngine) ExecuteSecurity(context.Context, sdlc.SDLCRequest) error {
-	r.securityCalls++
-	if r.securityCalls == 1 {
-		return errors.New("initial security failure")
-	}
-	return nil
+func (a *mongoBackedActivities) Product(ctx context.Context, req sdlc.SDLCRequest) error {
+	return a.store.CreateRun(ctx, sdlc.WorkflowRun{WorkflowID: req.WorkflowID, ProjectID: req.ProjectID, Status: "running", Stage: sdlc.StageProduct})
+}
+
+func (a *mongoBackedActivities) Developer(ctx context.Context, req sdlc.SDLCRequest) error {
+	return a.store.UpdateRun(ctx, sdlc.WorkflowRun{WorkflowID: req.WorkflowID, ProjectID: req.ProjectID, Status: "running", Stage: sdlc.StageDeveloper})
+}
+
+func (a *mongoBackedActivities) Security(ctx context.Context, req sdlc.SDLCRequest) error {
+	return a.store.UpdateRun(ctx, sdlc.WorkflowRun{WorkflowID: req.WorkflowID, ProjectID: req.ProjectID, Status: "completed", Stage: sdlc.StageSecurity})
 }
 
 func safeMongoRun(ctx context.Context) (c *mongocontainer.MongoDBContainer, err error) {
@@ -52,7 +56,7 @@ func safeTemporalRun(ctx context.Context) (c testcontainers.Container, err error
 	return testcontainers.Run(ctx, "temporalio/auto-setup:1.25", testcontainers.WithExposedPorts("7233/tcp"), testcontainers.WithWaitStrategy(wait.ForListeningPort("7233/tcp")))
 }
 
-func TestE2E_SecurityFailThenRemediateUsingContainers(t *testing.T) {
+func TestE2E_TemporalWorkflowAndMongoStoreAreWired(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
@@ -74,23 +78,31 @@ func TestE2E_SecurityFailThenRemediateUsingContainers(t *testing.T) {
 	mongoClient, err := mongo.Connect(ctx, options.Client().ApplyURI(mongoURI))
 	require.NoError(t, err)
 	defer func() { _ = mongoClient.Disconnect(ctx) }()
+	store := mongostore.NewStore(mongoClient.Database("agentic"))
 
 	endpoint, err := temporalC.Endpoint(ctx, "")
 	require.NoError(t, err)
 	hostport := strings.TrimPrefix(endpoint, "http://")
 
-	temporalClient, err := client.Dial(client.Options{HostPort: hostport, Namespace: "default"})
+	temporalClient, err := temporalclient.Dial(temporalclient.Options{HostPort: hostport, Namespace: "default"})
 	require.NoError(t, err)
 	defer temporalClient.Close()
 
-	engine := &remediationEngine{}
-	coordinator := sdlc.NewCoordinator(memory.NewStore(), engine, 2)
-	require.NoError(t, coordinator.Run(ctx, sdlc.SDLCRequest{WorkflowID: "e2e-wf", ProjectID: "e2e-proj"}))
+	w := worker.New(temporalClient, testTaskQueue, worker.Options{})
+	temporalsdlc.Register(w, &mongoBackedActivities{store: store})
+	require.NoError(t, w.Start())
+	defer w.Stop()
 
-	_, err = mongoClient.Database("agentic").Collection("audit_events").InsertOne(ctx, bson.M{
-		"workflowId": "e2e-wf",
-		"status":     "completed",
-		"retries":    1,
-	})
+	workflowID := "e2e-wf-temporal-mongo"
+	we, err := temporalClient.ExecuteWorkflow(ctx, temporalclient.StartWorkflowOptions{ID: workflowID, TaskQueue: testTaskQueue}, temporalsdlc.WorkflowName, sdlc.SDLCRequest{WorkflowID: workflowID, ProjectID: "e2e-proj"}, 1)
 	require.NoError(t, err)
+	require.NotEmpty(t, we.GetID())
+
+	err = we.Get(ctx, nil)
+	require.NoError(t, err)
+
+	run, err := store.FindRun(ctx, workflowID)
+	require.NoError(t, err)
+	require.Equal(t, "completed", run.Status)
+	require.Equal(t, sdlc.StageSecurity, run.Stage)
 }
