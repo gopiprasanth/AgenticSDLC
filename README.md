@@ -149,6 +149,20 @@ go test ./internal/... ./tests/...
 - `docs/plan/` – staged implementation and milestone plan
 - `docs/research/` – supporting architecture and research notes
 
+## Next / Coming Sections
+
+The following pending work items and roadmap sections are planned for upcoming commits and documentation:
+
+- Mongo-backed repositories and claim-check artifact storage (replace in-memory stores).
+- Replace no-op Temporal activities with real activity implementations and durable audit writes.
+- A2A and MCP contract tests with HTTP handlers and validation fixtures.
+- Add MongoDB indexes, unique constraints, and idempotency keys for external side-effects.
+- Implement Product, Developer, and Security agent activity integrations (GitHub sandbox, `gosec`).
+- Add Quality, Research, and Deployment agents (post-MVP expansion).
+- CLI surface (`agenticctl`) and human-in-the-loop signal gates; RBAC and API key auth.
+- Packaging for single-VM Docker deployment and operational runbooks.
+- Expanded integration/e2e tests: recovery, security remediation loops, and GitHub lifecycle.
+
 ## License
 
 This project is licensed under the **Creative Commons Attribution 4.0 International (CC BY 4.0)** license.
