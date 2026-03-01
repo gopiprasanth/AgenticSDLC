@@ -1,0 +1,11 @@
+services:
+  prerequisites:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.prerequisites
+    image: agenticsdlc/prerequisites:local
+    working_dir: /workspace/AgenticSDLC
+    volumes:
+      - ../:/workspace/AgenticSDLC
+    tty: true
+    stdin_open: true

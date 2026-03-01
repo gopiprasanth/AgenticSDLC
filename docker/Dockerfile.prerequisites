@@ -1,0 +1,23 @@
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    git \
+    gnupg \
+    lsb-release \
+    make \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Go (pinned to repository toolchain expectation)
+ARG GO_VERSION=1.24.3
+RUN curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -o /tmp/go.tgz \
+    && tar -C /usr/local -xzf /tmp/go.tgz \
+    && rm -f /tmp/go.tgz
+
+ENV PATH="/usr/local/go/bin:${PATH}"
+WORKDIR /workspace/AgenticSDLC
+
+CMD ["bash"]

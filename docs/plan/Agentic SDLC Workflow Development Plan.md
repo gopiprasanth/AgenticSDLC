@@ -153,3 +153,53 @@ type SecurityReport struct {
 6. Human-in-the-loop is CLI signal-based in MVP.
 7. Post-MVP expansion order is **Quality -> Research -> Deployment**.
 8. Security baseline is **API keys + RBAC** in MVP, with stronger auth hardening later.
+
+## Development Kickoff (Implemented)
+
+### Delivered Bootstrap Scope
+- Initialized Go module layout for SDLC coordination primitives and run lifecycle tracking.
+- Added `Coordinator` workflow orchestration shell with Product -> Developer -> Security stage progression and security remediation retry loop.
+- Added runner abstraction to separate Temporal workflow starts from MongoDB audit persistence.
+
+### Delivered Test Foundation
+1. **Unit tests (happy + unhappy)**
+   - Happy path end-to-end coordinator execution.
+   - Security fail -> remediation -> pass loop.
+   - Security fail after retry limit.
+   - Temporal start failure and Mongo audit write failure in runner startup flow.
+2. **Integration tests with Docker testcontainers**
+   - Temporal and MongoDB containers provisioned together.
+   - Workflow coordination path executed against containerized dependency bootstrap.
+3. **E2E tests with Docker testcontainers**
+   - Temporal client connectivity validated against containerized Temporal frontend.
+   - MongoDB write path validated with real insert after remediation success path.
+
+### Next Steps
+- Replace in-memory workflow store with Mongo-backed repository implementation and claim-check artifact storage.
+- Register real Temporal workflows/activities and move side effects behind activity boundaries.
+- Add A2A and MCP contract tests and API handlers.
+
+
+## Next Steps Progress (Continuation)
+
+### 1) Mongo-backed repository + claim-check artifacts
+- Added MongoDB-backed workflow repository implementation for `CreateRun`, `UpdateRun`, and `FindRun`.
+- Added claim-check style artifact persistence and retrieval (`SaveArtifact`, `LoadArtifact`) against `artifacts` collection.
+- Added integration test coverage validating workflow run persistence and artifact round-trip.
+
+### 2) Temporal workflow/activity registration scaffold
+- Added first Temporal workflow definition (`agentic.sdlc.workflow`) with deterministic Product -> Developer -> Security sequencing.
+- Added security remediation retry loop in workflow path aligned with existing coordinator semantics.
+- Added worker registration helper that wires named workflow and activities for incremental replacement of no-op handlers.
+
+### 3) A2A + MCP contract/API bootstrap
+- Added A2A task request contract with validation and HTTP handler.
+- Added MCP tool request contract with validation and HTTP handler.
+- Added contract handler tests for happy and unhappy payload scenarios.
+- Implemented coordinator-level A2A task handoffs between Product, Developer, and Security agents for normal and remediation paths.
+- Added Developer -> Product back-to-back requirement clarity communication loop before retrying Developer execution.
+
+### Upcoming immediate follow-ups
+- Add Mongo indexes and unique constraints (`workflowId`, `artifactId`) plus idempotency keys for external side-effects.
+- Replace no-op Temporal activities with real Product/Developer/Security activity implementations and durable audit writes.
+- Expand A2A and MCP schema conformance tests with versioned payload fixtures.
