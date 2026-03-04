@@ -165,6 +165,9 @@ The following pending work items and roadmap sections are planned for upcoming c
 
 ## License
 
-This project is licensed under the **Creative Commons Attribution 4.0 International (CC BY 4.0)** license.
+This project is licensed under the **MIT License**.
 
-See [LICENSE](./LICENSE) for full text.
+MIT is a permissive and commonly used free/open-source software license that allows commercial use, modification, distribution, and private use, provided the license and copyright notice are included.
+
+- Full license text: [LICENSE](./LICENSE)
+- Short attribution notice: [NOTICE](./NOTICE)
