@@ -14,6 +14,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	mongocontainer "github.com/testcontainers/testcontainers-go/modules/mongodb"
 	"github.com/testcontainers/testcontainers-go/wait"
+	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	temporalclient "go.temporal.io/sdk/client"
@@ -22,20 +23,20 @@ import (
 
 const testTaskQueue = "agentic-e2e-task-queue"
 
-type mongoBackedActivities struct {
+type mongoBackedEngine struct {
 	store *mongostore.Store
 }
 
-func (a *mongoBackedActivities) Product(ctx context.Context, req sdlc.SDLCRequest) error {
-	return a.store.CreateRun(ctx, sdlc.WorkflowRun{WorkflowID: req.WorkflowID, ProjectID: req.ProjectID, Status: "running", Stage: sdlc.StageProduct})
+func (e *mongoBackedEngine) ExecuteProduct(ctx context.Context, req sdlc.SDLCRequest) error {
+	return e.store.CreateRun(ctx, sdlc.WorkflowRun{WorkflowID: req.WorkflowID, ProjectID: req.ProjectID, Status: "running", Stage: sdlc.StageProduct})
 }
 
-func (a *mongoBackedActivities) Developer(ctx context.Context, req sdlc.SDLCRequest) error {
-	return a.store.UpdateRun(ctx, sdlc.WorkflowRun{WorkflowID: req.WorkflowID, ProjectID: req.ProjectID, Status: "running", Stage: sdlc.StageDeveloper})
+func (e *mongoBackedEngine) ExecuteDeveloper(ctx context.Context, req sdlc.SDLCRequest) error {
+	return e.store.UpdateRun(ctx, sdlc.WorkflowRun{WorkflowID: req.WorkflowID, ProjectID: req.ProjectID, Status: "running", Stage: sdlc.StageDeveloper})
 }
 
-func (a *mongoBackedActivities) Security(ctx context.Context, req sdlc.SDLCRequest) error {
-	return a.store.UpdateRun(ctx, sdlc.WorkflowRun{WorkflowID: req.WorkflowID, ProjectID: req.ProjectID, Status: "completed", Stage: sdlc.StageSecurity})
+func (e *mongoBackedEngine) ExecuteSecurity(ctx context.Context, req sdlc.SDLCRequest) error {
+	return e.store.UpdateRun(ctx, sdlc.WorkflowRun{WorkflowID: req.WorkflowID, ProjectID: req.ProjectID, Status: "completed", Stage: sdlc.StageSecurity})
 }
 
 func safeMongoRun(ctx context.Context) (c *mongocontainer.MongoDBContainer, err error) {
@@ -79,6 +80,9 @@ func TestE2E_TemporalWorkflowAndMongoStoreAreWired(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = mongoClient.Disconnect(ctx) }()
 	store := mongostore.NewStore(mongoClient.Database("agentic"))
+	auditStore := mongostore.NewAuditStore(mongoClient.Database("agentic"))
+	require.NoError(t, store.EnsureIndexes(ctx))
+	require.NoError(t, auditStore.EnsureIndexes(ctx))
 
 	endpoint, err := temporalC.Endpoint(ctx, "")
 	require.NoError(t, err)
@@ -89,7 +93,7 @@ func TestE2E_TemporalWorkflowAndMongoStoreAreWired(t *testing.T) {
 	defer temporalClient.Close()
 
 	w := worker.New(temporalClient, testTaskQueue, worker.Options{})
-	temporalsdlc.Register(w, &mongoBackedActivities{store: store})
+	temporalsdlc.Register(w, temporalsdlc.NewActivities(&mongoBackedEngine{store: store}, auditStore))
 	require.NoError(t, w.Start())
 	defer w.Stop()
 
@@ -105,4 +109,8 @@ func TestE2E_TemporalWorkflowAndMongoStoreAreWired(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "completed", run.Status)
 	require.Equal(t, sdlc.StageSecurity, run.Stage)
+
+	count, err := mongoClient.Database("agentic").Collection("audit_events").CountDocuments(ctx, bson.M{"workflowId": workflowID})
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, count, int64(3))
 }

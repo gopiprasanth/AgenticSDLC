@@ -15,12 +15,6 @@ type ActivityHandler interface {
 	Security(ctx context.Context, req sdlc.SDLCRequest) error
 }
 
-type NoopActivities struct{}
-
-func (NoopActivities) Product(context.Context, sdlc.SDLCRequest) error   { return nil }
-func (NoopActivities) Developer(context.Context, sdlc.SDLCRequest) error { return nil }
-func (NoopActivities) Security(context.Context, sdlc.SDLCRequest) error  { return nil }
-
 func Register(w worker.Worker, activities ActivityHandler) {
 	w.RegisterWorkflowWithOptions(OrchestrationWorkflow, wfsdk.RegisterOptions{Name: WorkflowName})
 	w.RegisterActivityWithOptions(activities.Product, activity.RegisterOptions{Name: activityProduct})

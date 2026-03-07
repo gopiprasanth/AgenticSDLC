@@ -200,6 +200,6 @@ type SecurityReport struct {
 - Added Developer -> Product back-to-back requirement clarity communication loop before retrying Developer execution.
 
 ### Upcoming immediate follow-ups
-- Add Mongo indexes and unique constraints (`workflowId`, `artifactId`) plus idempotency keys for external side-effects.
-- Replace no-op Temporal activities with real Product/Developer/Security activity implementations and durable audit writes.
+- Add Mongo indexes and unique constraints (`workflowId`, `artifactId`) plus idempotency keys for external side-effects. ✅ Started: index bootstrap + idempotent run/artifact upserts added with integration tests.
+- Replace no-op Temporal activities with real Product/Developer/Security activity implementations and durable audit writes. ✅ Completed: real activity adapter + Mongo audit_events writer with durable/idempotent writes.
 - Expand A2A and MCP schema conformance tests with versioned payload fixtures.
