@@ -57,10 +57,14 @@ func (a *Activities) executeStage(ctx context.Context, req sdlc.SDLCRequest, sta
 
 func activityEventID(ctx context.Context, status string) string {
 	info, ok := safeActivityInfo(ctx)
-	if !ok || info.WorkflowExecution.ID == "" {
+	if !ok || info.WorkflowExecution.ID == "" || info.WorkflowExecution.RunID == "" {
 		return "local-" + status
 	}
-	return fmt.Sprintf("%s-%s-%s-%d", info.WorkflowExecution.ID, info.ActivityID, status, info.Attempt)
+	return composeActivityEventID(info.WorkflowExecution.ID, info.WorkflowExecution.RunID, info.ActivityID, status, info.Attempt)
+}
+
+func composeActivityEventID(workflowID, runID, activityID, status string, attempt int32) string {
+	return fmt.Sprintf("%s-%s-%s-%s-%d", workflowID, runID, activityID, status, attempt)
 }
 
 func safeActivityInfo(ctx context.Context) (activity.Info, bool) {

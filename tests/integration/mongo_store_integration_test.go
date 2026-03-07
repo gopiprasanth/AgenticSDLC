@@ -122,15 +122,15 @@ func TestMongoAuditStore_WritesDurableIdempotentEvents(t *testing.T) {
 	auditStore := mongostore.NewAuditStore(db)
 	require.NoError(t, auditStore.EnsureIndexes(ctx))
 
-	require.NoError(t, auditStore.WriteStartEvent(ctx, "wf-audit", sdlc.SDLCRequest{WorkflowID: "wf-audit", ProjectID: "proj-1", Goal: "ship"}))
-	require.NoError(t, auditStore.WriteStartEvent(ctx, "wf-audit", sdlc.SDLCRequest{WorkflowID: "wf-audit", ProjectID: "proj-1", Goal: "ship"}))
+	require.NoError(t, auditStore.WriteStartEvent(ctx, "wf-audit", "run-1", sdlc.SDLCRequest{WorkflowID: "wf-audit", ProjectID: "proj-1", Goal: "ship"}))
+	require.NoError(t, auditStore.WriteStartEvent(ctx, "wf-audit", "run-2", sdlc.SDLCRequest{WorkflowID: "wf-audit", ProjectID: "proj-1", Goal: "ship"}))
 
 	require.NoError(t, auditStore.WriteActivityEvent(ctx, sdlc.ActivityAuditEvent{EventID: "evt-1", WorkflowID: "wf-audit", Stage: sdlc.StageProduct, Status: "completed", Detail: "ok"}))
 	require.NoError(t, auditStore.WriteActivityEvent(ctx, sdlc.ActivityAuditEvent{EventID: "evt-1", WorkflowID: "wf-audit", Stage: sdlc.StageProduct, Status: "completed", Detail: "ok"}))
 
 	count, err := db.Collection("audit_events").CountDocuments(ctx, bson.M{"workflowId": "wf-audit"})
 	require.NoError(t, err)
-	require.Equal(t, int64(2), count)
+	require.Equal(t, int64(3), count)
 }
 
 func TestMongoStore_EnsureIndexesCreatesUniqueConstraints(t *testing.T) {

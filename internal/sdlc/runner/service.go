@@ -8,11 +8,11 @@ import (
 )
 
 type TemporalStarter interface {
-	StartWorkflow(ctx context.Context, req sdlc.SDLCRequest) (string, error)
+	StartWorkflow(ctx context.Context, req sdlc.SDLCRequest) (workflowID string, runID string, err error)
 }
 
 type MongoAuditWriter interface {
-	WriteStartEvent(ctx context.Context, workflowID string, req sdlc.SDLCRequest) error
+	WriteStartEvent(ctx context.Context, workflowID string, runID string, req sdlc.SDLCRequest) error
 }
 
 type StartError struct {
@@ -39,11 +39,11 @@ func NewService(temporal TemporalStarter, audit MongoAuditWriter) *Service {
 }
 
 func (s *Service) Start(ctx context.Context, req sdlc.SDLCRequest) (string, error) {
-	workflowID, err := s.temporal.StartWorkflow(ctx, req)
+	workflowID, runID, err := s.temporal.StartWorkflow(ctx, req)
 	if err != nil {
 		return "", fmt.Errorf("start temporal workflow: %w", err)
 	}
-	if err := s.audit.WriteStartEvent(ctx, workflowID, req); err != nil {
+	if err := s.audit.WriteStartEvent(ctx, workflowID, runID, req); err != nil {
 		return workflowID, &StartError{WorkflowID: workflowID, Err: fmt.Errorf("write start audit event: %w", err)}
 	}
 	return workflowID, nil

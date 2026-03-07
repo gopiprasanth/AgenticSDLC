@@ -24,7 +24,9 @@ type auditStub struct {
 	err    error
 }
 
-func (a *auditStub) WriteStartEvent(context.Context, string, sdlc.SDLCRequest) error { return nil }
+func (a *auditStub) WriteStartEvent(context.Context, string, string, sdlc.SDLCRequest) error {
+	return nil
+}
 func (a *auditStub) WriteActivityEvent(_ context.Context, event sdlc.ActivityAuditEvent) error {
 	a.events = append(a.events, event)
 	return a.err
@@ -59,4 +61,9 @@ func TestActivities_AuditFailureReturnsError(t *testing.T) {
 
 	err := acts.Security(context.Background(), sdlc.SDLCRequest{WorkflowID: "wf-3"})
 	require.ErrorContains(t, err, "audit write")
+}
+
+func TestComposeActivityEventID_IncludesRunID(t *testing.T) {
+	eventID := composeActivityEventID("wf-1", "run-1", "activity-1", "completed", 2)
+	require.Equal(t, "wf-1-run-1-activity-1-completed-2", eventID)
 }

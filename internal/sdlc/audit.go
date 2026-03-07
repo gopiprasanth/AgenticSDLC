@@ -11,6 +11,6 @@ type ActivityAuditEvent struct {
 }
 
 type AuditWriter interface {
-	WriteStartEvent(ctx context.Context, workflowID string, req SDLCRequest) error
+	WriteStartEvent(ctx context.Context, workflowID string, runID string, req SDLCRequest) error
 	WriteActivityEvent(ctx context.Context, event ActivityAuditEvent) error
 }

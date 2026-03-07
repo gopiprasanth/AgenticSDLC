@@ -42,9 +42,9 @@ func (s *AuditStore) EnsureIndexes(ctx context.Context) error {
 	return nil
 }
 
-func (s *AuditStore) WriteStartEvent(ctx context.Context, workflowID string, req sdlc.SDLCRequest) error {
+func (s *AuditStore) WriteStartEvent(ctx context.Context, workflowID string, runID string, req sdlc.SDLCRequest) error {
 	doc := auditEventDocument{
-		EventID:    "start-" + workflowID,
+		EventID:    fmt.Sprintf("start-%s-%s", workflowID, runID),
 		WorkflowID: workflowID,
 		Type:       "workflow.start",
 		Goal:       req.Goal,
